@@ -1,0 +1,325 @@
+---
+title: "Data Science I Homework 3"
+author: "Ruicheng Yang"
+output: github_document
+---
+
+# Question 1
+
+
+```{r aisle_total}
+
+#load the necessary packages#
+
+knitr::opts_chunk$set(collapse = TRUE, message = FALSE)
+
+library(tidyverse)
+library(ggridges)
+library(patchwork)
+
+#load the p8105 dataset and instacart#
+
+library(p8105.datasets)
+data("instacart")
+
+#count the amount of times an aisle appears#
+
+instacart |> count(aisle, sort = TRUE)
+```
+
+
+There are about `r length(unique(instacart$aisle_id))`aisles in total. The aisle with the most amount of items ordered would be fresh vegetables.
+
+```{r aisle_items_ordered}
+
+#Produce a plot for the amount of times an item was ordered from an aisle#
+
+instacart |> count(aisle, sort = TRUE) |> filter(n > 10000) |>
+  mutate(aisle = reorder(aisle, n)) |> ggplot(aes(x = n, y = aisle)) +
+  geom_col() +  labs(title = "Total Number of Items Ordered for Each Aisle", x = "Total Number of Items Ordered", y = "Aisle")
+
+```
+
+The most popular items that are ordered seems to be from aisles that are relevant to necessary groceries. This include not only vegetables and fruits, but also dairy products like milk and cheese. Frozen produce and eggs are also popularly ordered. The less popular items ordered have to do with sugars and additional sources of protein and starch.
+
+```{r baking_dog_food_vegetable_fruits}
+
+#Make a table that shows the amount of times the 3 most popular items were ordered from each aisle#
+
+instacart |> filter(aisle == "packaged vegetables fruits" | aisle == "dog food care" |
+                      aisle == "baking ingredients") |> 
+                      count(aisle, product_name, sort = TRUE) |> group_by(aisle) |>
+                      slice_max(order_by = n, n = 3) |>
+                      arrange(aisle, n) |>
+                      mutate(`number_of_times_ordered` = n) |>
+                      select(-n) |> knitr::kable()
+
+```
+
+
+Among the three aisles, dog food care has the least amount of items ordered from it. This can be explained by how only a portion of customers own pets--and only a portion own dogs--and thus a smaller proportion of customers would need dog food. With that said, the most popular item in this aisle is Snack Sticks Chicken & Rice Recipe Dog Treats.
+
+Meanwhile, packaged vegetable fruits is the most popular aisle due to how such items do not need further preparation to eat, as opposed to baking ingredients that require work on the customers. The most popular item from this aisle is organic baby spinach. This could be because organic baby spinach can be eaten raw and cooked, giving it more variety. It is also interesting to note that customers seem to prefer raspberries to blueberries.
+
+Finally, among baking ingredients, customer seem to prefer light brown sugar compared to cane sugar. This could be due to how light brown sugar is refined and could give a richer flavor compared to cane sugar.
+
+
+```{r pink_apple_coffee_ice_cream}
+
+#produce a reader friendly table for the specific time on the specific day our two products were ordered on average#
+
+instacart |> filter(product_name == "Pink Lady Apples" | product_name == "Coffee Ice Cream") |> mutate(order_dow = case_when(
+            order_dow == 0 ~ "sunday",
+            order_dow == 1 ~ "monday",
+            order_dow == 2 ~ "tuesday",
+            order_dow == 3 ~ "wednesday",
+            order_dow == 4 ~ "thursday",
+            order_dow == 5 ~ "friday",
+            order_dow == 6 ~ "saturday",
+          )) |> group_by(product_name, order_dow) |>
+          summarize(mean_hour = mean(order_hour_of_day)) |>
+          pivot_wider(
+            names_from = order_dow,
+            values_from = mean_hour
+          ) |> knitr::kable()
+
+```
+
+Both products seem to be ordered around the afternoon on Friday, Sunday, and Wednesday. However, aside from Friday when Pink Lady Apples is ordered after Coffee Ice Cream, Pink Lady Apples is ordered before Coffee Ice Cream on Sunday and Wednesday. On every other day, while Coffee Ice Cream is still ordered around the afternoon, Pink Lady Apples is ordered around late morning before the noon. This could be because Pink Lady Apples is a fruit and would be in popular demand. Therefore, customers would likely want to order such an item as early as possible. Meanwhile, Coffee Ice Cream would be suited to when the day is hot, which is likely to happen in the afternoon.
+
+# Question 2
+
+```{r read_zillow_data}
+
+#Read the zillow rental price data file#
+
+zillow_price_df = read_csv("./zillow_data/zillow_data/Zip_zori_uc_sfrcondomfr_sm_month_NYC.csv")
+
+#Have a new data variable as ZipCode from the regionname variable#
+
+zillow_price_zip_variation_df = mutate(zillow_price_df, ZipCode = RegionName)
+
+#Clean the data and eliminate StateName, RegionName, RegionType, which are unnecessary data variables#
+
+zillow_clean_price_df = select(zillow_price_zip_variation_df, -`StateName`, -RegionName, -RegionType)
+```
+
+```{r clean_data_sets}
+
+zillow_df = read_csv("./zillow_data/zillow_data/Zip Codes.csv")
+
+#Mutate the CountyName variable from "Bronx" to "Bronx County"#
+
+zillow_county_variation_df = mutate(zillow_df, CountyName = paste(County, "County"))
+
+#Eliminate varibles such as State FIPS, County FIPS, and County#
+
+zillow_clean_df = select(zillow_county_variation_df, -`State FIPS`, -`County FIPS`, -County)
+```
+
+```{r merge_data_sets}
+
+#Merge the two datasets into a single tidy dataset#
+
+first_single_zillow_df = left_join(zillow_clean_df, zillow_clean_price_df) |>
+  distinct(ZipCode, .keep_all = TRUE) |> pivot_longer(
+    cols = starts_with("20"),
+  names_to = "Date",
+  values_to = "Rental Price"
+  ) |> janitor::clean_names() |> select(zip_code, county_name, neighborhood, date, rental_price)
+
+```
+
+```{r}
+
+#make a table that shows how many times a zip code is observed#
+
+not_na_pivot_longer_zillow_df = first_single_zillow_df %>% drop_na(`rental_price`)
+is_na_pivot_longer_zillow_df = first_single_zillow_df %>% filter(is.na(`rental_price`))
+
+not_na_pivot_longer_single_zillow_df = 
+  not_na_pivot_longer_zillow_df |> count(zip_code, sort = TRUE)
+
+is_na_pivot_longer_single_zillow_df =
+  is_na_pivot_longer_zillow_df |> count(zip_code, sort = TRUE)
+
+is_na_pivot_longer_single_zillow_df = is_na_pivot_longer_single_zillow_df %>% mutate(n = 0)
+
+combined_zip_code_rental_count_df = bind_rows(is_na_pivot_longer_single_zillow_df, not_na_pivot_longer_single_zillow_df)
+
+counts_of_zip_codes = combined_zip_code_rental_count_df %>% group_by(zip_code) %>%
+  summarise(n = sum(n))
+
+#get the highest counts and lowest counts of zip codes#
+
+highest_counts_of_zip_codes = counts_of_zip_codes %>% filter(n == 116)
+lowest_counts_of_zip_codes = counts_of_zip_codes %>% filter(n < 10) %>% arrange(desc(n))
+
+```
+
+The number of ZIP codes that were observed for all 116 months is `r sum(counts_of_zip_codes$n == 116)`. Meanwhile, the number of ZIP codes that were observed for fewer than 10 months is `r sum(counts_of_zip_codes$n < 10)`. A lot of the zip codes that were observed rarely are located in areas of NYC that host a lot of business. Therefore, these properties would likely not have rental prices, as these buildings would already be occupied for various companies. Meanwhile, other zip codes that are observed each month take place in locations such as upper Manhattan and Brooklyn, where residential buildings would be more concentrated in.
+
+```{r mean_price_every_borough}
+
+Year_pivot_longer_df = separate(first_single_zillow_df, 
+                                date, into = c("year", "month", "day"), sep = "-")
+
+Year_1_pivot_longer_df = Year_pivot_longer_df |> mutate(Year = strtoi(year))
+
+#Create table that shows mean rental price for all boroughs#
+
+Year_borough_df = Year_1_pivot_longer_df |> drop_na(`rental_price`) |> group_by(year, county_name) |>
+  summarize(mean_rental_price = mean(`rental_price`, na.rm = TRUE)) |> arrange(county_name) 
+
+Year_borough_df |> knitr::kable()
+
+ggplot(Year_borough_df, aes(x = year, y = mean_rental_price)) + geom_point(aes(color = county_name), alpha = 0.5) +
+  geom_smooth(se = FALSE) + labs(title = "Mean Rental Price Across the Years for All Boroughs", x = "Year", y = "Mean Rental Price", color = "Boroughs")
+
+
+```
+
+In each of the boroughs, it seems like the mean rental price increases from 2015 to 2024. For New York, Kings, and Queens County from 2019 to 2021, there seems to be a time when the rental price stayed relatively unchanged or even decreased. This would make sense, as 2020 was the start of the pandemic and therefore the demand for properties would have decreased, decreasing the mean rental price for that year.
+
+Comparing the trends across all boroughs, it seems that the mean rental price for New York County a.k.a. Brooklyn is the highest. This would be due to the demand for residential buildings there being much higher than all other boroughs, especially in downtown Manhattan. Meanwhile, there is a sharp increase in the mean rental price in Bronx county from 2017 to 2024. However, the mean rental price for Bronx County was still lower than all other counties for every year.
+
+This can be explained by examining how Bronx County has much more available units for rent compared to New York county. Thus, this would decrease the mean rental price for Bronx county compared to other boroughs. It is also notable to see that while the mean rental price dipped from 2019 to 2021 for New York, Queens, and King county, the mean rental price kept increasing for Bronx and Richmond counties. However, it is important to note that there is a lack of data for Richmond county before 2020, thus lacking some comparability.
+
+
+```{r rental_price_over_all_available_years}
+
+Zip_Code_Rent_Year_df = Year_pivot_longer_df |> mutate(year = strtoi(year))
+
+#Get rental price for every zip code that is observed#
+  
+Zip_Code_Rent_df = Zip_Code_Rent_Year_df |> group_by(year, zip_code, county_name, month) |> summarize(rental_price = `rental_price`, na.rm = TRUE)
+
+Zip_Code_Rent_df = Zip_Code_Rent_df %>% mutate(date = paste(as.character(year), as.character(month), sep = "-"))
+
+#separate data based on county name and plot it#
+
+every_rent_zip_code = ggplot(Zip_Code_Rent_df, aes(x = date, y = rental_price)) + geom_point(aes(color = zip_code)) + facet_wrap(~county_name) + labs(title = "Rental Price Within every Zip Code for All Available Years", x = "Date", y = "Rental Price", color = "Zip Codes")
+
+every_rent_zip_code
+```
+
+```{r}
+
+#separate data based on zip code and export it to plot#
+
+p = ggplot(Zip_Code_Rent_df, aes(x = date, y = rental_price)) + geom_point(aes(color = county_name), alpha = 0.5) + facet_wrap(~zip_code) + labs(title = "Rental Price Within every Zip Code for All Available Years", x = "Date", y = "Rental Price", color = "Corresponding Borough")
+
+ggsave("Results/zip_codes_borough.png", plot = p, width = 30, height = 20, limitsize = FALSE)
+
+
+```
+
+After filtering out the zip codes and properties that were missing values for rental prices, we observe the same trend of all properties across boroughs increasing. The lack of data for earlier dates in Richmond County could be attributed to how Staten Island may have had properties that lacked units for rent. It is also notable that with properties in New York County, there was a sharp decrease in the rental price among many zip codes from the year 2019 to 2020. Again, this could be attributed to the COVID-19 pandemic.
+
+```{r plot_for_2023_rental_price}
+
+Twenty_Twenty_Three_Zip_Code_rent_df = Zip_Code_Rent_Year_df |> filter(year == 2023) |> group_by(zip_code, county_name) |>  summarize(mean_rental_price = mean(`rental_price`), na.rm = TRUE)
+
+#make the plot that displays distribution of mean rental price over 2023 for zip codes#
+
+ggplot(Twenty_Twenty_Three_Zip_Code_rent_df, aes(x = zip_code, y = mean_rental_price)) + geom_point(aes(color = county_name), alpha = 1) + labs(title = "Mean Rental Price in 2023 and Zip Code", x = "Zip Code", y = "Mean Rental Price", color = "Counties")
+
+```
+
+For the zip codes in New York County in 2023, the mean rental price has a much larger dispersion compared to other boroughs. Specifically, it has a couple of data points that have a mean rental price larger than 6,000 dollars per month. Overall, it seems like New York County has a higher mean rental price in 2023 compared to other boroughs.
+
+The second highest mean rental price belongs to Kings County, which lines up with the trend observed for other years. It also lines up with the mean rental price across all years for the boroughs.
+
+Finally, the mean rental price over 2023 for Bronx County, Richmond County, and Queens County is overall similar. It is notable that even in 2023, Richmond County has significantly less observations compared to all other boroughs.
+
+```{r export_data_plots}
+
+mean_rent_zip_code_2023_plot = ggplot(Twenty_Twenty_Three_Zip_Code_rent_df, aes(x = zip_code, y = mean_rental_price)) + geom_point(aes(color = county_name))
+
+combined_plot = every_rent_zip_code/mean_rent_zip_code_2023_plot
+
+ggsave("Results/nyc_combined_rental_trend.png", plot = combined_plot, width = 30, height = 20, limitsize = FALSE)
+
+```
+
+# Question 3
+
+```{r tidy_dataset_question_3}
+
+#read our datasets#
+
+nhane_covar_df = read_csv("./Problem_3_Datasets/nhanes_covar.csv")
+nhane_accel_df = read_csv("./Problem_3_Datasets/nhanes_accel.csv")
+
+#clean, tidy, and merge our datasets#
+
+nhane_covar_clean_variable_df = nhane_covar_df |> mutate(SEQN = `...1`, sex = `1 = male`,
+                                                      age = `...3`, BMI = `...4`, 
+                                                      education = `1 = Less than high school`) |>
+  select(-`...1`, -`1 = male`, -`...3`, -`...4`, -`1 = Less than high school`) |> drop_na(SEQN, sex, age, BMI, education) |> filter(age >= 21) |> filter(SEQN != "SEQN") |> mutate(
+    sex = case_when(
+      sex == 1 ~ "male",
+      sex == 2 ~ "female"
+    ),
+    education = case_when(
+      education == 1 ~ "Less than high school",
+      education == 2 ~ "High school equivalent",
+      education == 3 ~ "More than high school"
+    ),
+    SEQN = as.numeric(SEQN), age = as.numeric(age), BMI = as.numeric(BMI)
+  )
+
+partial_nhane_joint_data_df = left_join(nhane_covar_clean_variable_df, nhane_accel_df)
+
+full_nhane_joint_data_df = partial_nhane_joint_data_df |> pivot_longer((min1:min1440), names_to = "Minute", values_to = "MIMS") |> mutate(Minute = strtoi(str_sub(Minute, 4))) |> select(-BMI)
+
+```
+
+```{r table_for_sex_and_education}
+#create table based on education and sex#
+
+partial_nhane_joint_data_df |> group_by(sex, education) |>
+  summarise(n = n()) |> pivot_wider(names_from = sex, values_from = n) |>
+  knitr::kable()
+```
+
+```{r visualisation_over_ages}
+
+#Create distribution of counts of people for all ages#
+
+partial_nhane_joint_data_df |> group_by(age, education, sex) |> 
+  ggplot(aes(x = age, fill = sex)) + geom_histogram(binwidth = 4, alpha = 0.5) +
+  facet_grid(education~sex) + labs(title = "Distribution of Ages Across Sexes and Education", x = "Age", y = "Number of People", color = "Sex")
+
+```
+
+For the participants with more than high school education, the distribution of ages is skewed right for female participants compared to male participants. This could be because how higher education was historically dominated by male students and only relatively recently is education being implemented more broadly across all sexes. 
+
+Meanwhile, the distribution of ages for less than high school education is relatively concentrated around ages 45, 70,and 80 for male participants, while the distribution for female participants in the same education level is more uniform. The distribution for male participants can be explained by how older participants may have come from a time when people had less resources to study and attend higher education. Overall, the total number of participants with this education level is similar for both sexes.
+
+Finally, the distribution of ages for an education of high school equivalent is relatively uniform for both sexes. However, from the table, we see that the total number of male participants are much higher than female participants in this education level.
+
+```{r total_MIMS_over_ages}
+
+#plot the total MIMS over all ages for sex and education levels#
+
+full_nhane_joint_data_df |> 
+  group_by(SEQN, sex, age, education) |> summarise(Total_MIMS = sum(`MIMS`)) |> ggplot(aes(x = age, y = Total_MIMS, color = sex)) + geom_point(alpha = 0.5) +
+  geom_smooth(se = FALSE) + facet_wrap(~education)+ labs(title = "Total MIMS Varied for All Ages", x = "Age", y = "Total MIMS", color = "Sex")
+
+```
+
+For education levels, the total MIMS has an overall negative correlation with age. For less than high school education, the total MIMS for all ages is rather consistent between the sexes. However, for high school equivalent education, there is an actual increase in total MIMS from ages 20 to 40 for both male and female participants. The total MIMS for female participants around age 40 is also significantly higher than male participants. Finally, for more than high school education, the total MIMS for female participants is higher than male participants by a bit for all ages.
+
+```{r average_MIMS_over_hour_of_day}
+
+#create a new dataset to transform each minute to their corresponding hour#
+
+full_nhane_joint_data_df |> mutate(hour = as.integer(Minute / 60))|> group_by(hour, sex, education) |> summarise(Mean_MIMS = mean(`MIMS`)) |> ggplot(aes(x = hour, y = Mean_MIMS, color = sex)) + geom_point(alpha = 0.5) +
+  geom_smooth(se = FALSE) + facet_wrap(~education)+ labs(title = "Average MIMS for Every Hour Depending on Education Level", x = "Hour of the Day", y = "Average MIMS", color = "Sex")
+
+```
+
+Overall, it seems that the mean MIMS increases from midnight to around noon of the day, and then decreases from noon to midnight. The more notable differences can be observed between the sexes. For less than high school education, the mean MIMS is similar for both female and male participants. However, for high school equivalent and higher education, the mean MIMS is higher for female participants over male participants.
+
+For higher than high school education, the mean MIMS for female participants is much higher than male participants around the hours of 10 to 20. The same trend can be observed for high school equivalent education, although the discrepancy between the sexes is much smaller. For other hours, the mean MIMS of female participants are only higher than male participants by a percentage at most. Otherwise, the mean MIMS difference is rather insignificant between the sexes.
